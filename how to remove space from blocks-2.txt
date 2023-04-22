@@ -1,0 +1,445 @@
+HOW TO:
+morphic.js 7101 draw label string in block
+	qui (OPPURE in byob.js 729) si elimina il "_"
+blocks.js 670 draws label parts (string & parameters)
+
+
+blocks.js 1998 setSpec DEFINISCE LE SPEC &
+	blocks.js 2000 parseSpec AGGIUNGE LA ROUTINE PER DISEGNARE
+	 RICHIAMATA DA
+	 	
+byob.js 747
+	CustomCommandBlockMorph.prototype.labelPart = function (spec) {
+	    var part;
+	
+	    if (!this.isPrototype) {
+	        return CustomCommandBlockMorph.uber.labelPart.call(this, spec);
+	    }
+	    if ((spec[0] === '%') && (spec.length > 1)) {
+	        part = new BlockInputFragmentMorph(spec.slice(1));
+	    } else {
+	        part = new BlockLabelFragmentMorph(spec);
+	        part.fontSize = this.fontSize;
+	        part.color = new Color(255, 255, 255);
+	        part.isBold = true;
+	        part.shadowColor = this.color.darker(this.labelContrast);
+	        part.shadowOffset = this.embossing;
+	        part.drawNew();
+	    }
+	    return part;
+	};
+
+
+morphic.js 7164
+	StringMorph.prototype.renderWithBlanks = function (context, startX, y) {
+	    var space = context.measureText(' ').width,
+	        blank = newCanvas(new Point(space, this.height())),
+	        ctx = blank.getContext('2d'),
+	        words = this.text.split(' '),
+	        x = startX || 0,
+	        isFirst = true;
+	
+	    // create the blank form
+	    ctx.fillStyle = this.blanksColor.toString();
+	    ctx.arc(
+	        space / 2,
+	        blank.height / 2,
+	        space / 2,
+	        radians(0),
+	        radians(360)
+	    );
+	    ctx.fill();
+	
+	    function drawBlank() {
+	        context.drawImage(blank, x, 0);
+	        x += space;
+	    }
+	
+	    // render my text inserting blanks
+	    words.forEach(function (word) {
+	        if (!isFirst) {
+	            drawBlank();
+	        }
+	        isFirst = false;
+	        if (word !== '') {
+	            context.fillText(word, x, y);
+	            x += context.measureText(word).width;
+	        }
+	    });
+	};
+	
+block.js 1390
+	SyntaxElementMorph.prototype.fixLayout = function () {
+	    var nb,
+	        parts = this.parts(),
+	        myself = this,
+	        x = 0,
+	        y,
+	        lineHeight = 0,
+	        maxX = 0,
+	        blockWidth = this.minWidth,
+	        blockHeight,
+	        affected,
+	        l = [],
+	        lines = [],
+	        space = this.isPrototype ?
+	                1 : Math.floor(fontHeight(this.fontSize) / 3),
+	        bottomCorrection,
+	        initialExtent = this.extent();
+	
+	    if ((this instanceof MultiArgMorph) && (this.slotSpec !== '%c')) {
+	        blockWidth += this.arrows().width();
+	    } else if (this instanceof ReporterBlockMorph) {
+	        blockWidth += (this.rounding * 2) + (this.edge * 2);
+	    } else {
+	        blockWidth += (this.corner * 4)
+	            + (this.edge * 2)
+	            + (this.inset * 3)
+	            + this.dent;
+	    }
+	
+	    if (this.nextBlock) {
+	        nb = this.nextBlock();
+	    }
+	
+	    // determine lines
+	    parts.forEach(function (part) {
+	        if ((part instanceof CSlotMorph)
+	                || (part.slotSpec === '%c')) {
+	            if (l.length > 0) {
+	                lines.push(l);
+	                lines.push([part]);
+	                l = [];
+	                x = 0;
+	            } else {
+	                lines.push([part]);
+	            }
+	        } else if (part instanceof BlockHighlightMorph) {
+	            nop(); // should be redundant now
+	            // myself.fullChanged();
+	            // myself.removeChild(part);
+	        } else {
+	            if (part.isVisible) {
+1447	                x += part.fullBounds().width() + space;
+	            }
+	            if ((x > myself.labelWidth) || part.isBlockLabelBreak) {
+	                if (l.length > 0) {
+	                    lines.push(l);
+	                    l = [];
+	                    x = part.fullBounds().width() + space;
+	                }
+	            }
+	            l.push(part);
+	            if (part.isBlockLabelBreak) {
+	                x = 0;
+	            }
+	        }
+	    });
+	    if (l.length > 0) {
+	        lines.push(l);
+	    }
+	
+	    // distribute parts on lines
+	    if (this instanceof CommandBlockMorph) {
+	        y = this.top() + this.corner + this.edge;
+	        if (this instanceof HatBlockMorph) {
+	            y += this.hatHeight;
+	        }
+	    } else if (this instanceof ReporterBlockMorph) {
+	        y = this.top() + (this.edge * 2);
+	    } else if (this instanceof MultiArgMorph
+	            || this instanceof ArgLabelMorph) {
+	        y = this.top();
+	    }
+	    lines.forEach(function (line) {
+	        x = myself.left() + myself.edge + myself.labelPadding;
+	        if (myself instanceof RingMorph) {
+	            x = myself.left() + space; //myself.labelPadding;
+	        } else if (myself.isPredicate) {
+	            x = myself.left() + myself.rounding;
+	        } else if (myself instanceof MultiArgMorph
+	                || myself instanceof ArgLabelMorph) {
+	            x = myself.left();
+	        }
+	        y += lineHeight;
+	        lineHeight = 0;
+	        line.forEach(function (part) {
+	            if (part instanceof CSlotMorph) {
+	                x -= myself.labelPadding;
+	                if (myself.isPredicate) {
+	                    x = myself.left() + myself.rounding;
+	                }
+	                part.setColor(myself.color);
+	                part.setPosition(new Point(x, y));
+	                lineHeight = part.height();
+	            } else {
+	                part.setPosition(new Point(x, y));
+	                if (!part.isBlockLabelBreak) {
+	                    if (part.slotSpec === '%c') {
+	                        x += part.width();
+	                    } else if (part.isVisible) {
+	                        x += part.fullBounds().width() + space;
+	                    }
+	                }
+	                maxX = Math.max(maxX, x);
+	                lineHeight = Math.max(
+	                    lineHeight,
+	                    part instanceof StringMorph ?
+	                            part.rawHeight() : part.height()
+	                );
+	            }
+	        });
+	
+	    // center parts vertically on each line:
+	        line.forEach(function (part) {
+	            part.moveBy(new Point(
+	                0,
+	                Math.floor((lineHeight - part.height()) / 2)
+	            ));
+	        });
+	    });
+	
+	    // determine my height:
+	    y += lineHeight;
+	    if (this.children.some(function (any) {
+	            return any instanceof CSlotMorph;
+	        })) {
+	        bottomCorrection = this.bottomPadding;
+	        if (this instanceof ReporterBlockMorph && !this.isPredicate) {
+	            bottomCorrection = Math.max(
+	                this.bottomPadding,
+	                this.rounding - this.bottomPadding
+	            );
+	        }
+	        y += bottomCorrection;
+	    }
+	    if (this instanceof CommandBlockMorph) {
+	        blockHeight = y - this.top() + (this.corner * 2);
+	    } else if (this instanceof ReporterBlockMorph) {
+	        blockHeight = y - this.top() + (this.edge * 2);
+	    } else if (this instanceof MultiArgMorph
+	            || this instanceof ArgLabelMorph) {
+	        blockHeight = y - this.top();
+	    }
+	
+	    // determine my width:
+	    if (this.isPredicate) {
+	        blockWidth = Math.max(
+	            blockWidth,
+	            maxX - this.left() + this.rounding
+	        );
+	    } else if (this instanceof MultiArgMorph
+	            || this instanceof ArgLabelMorph) {
+	        blockWidth = Math.max(
+	            blockWidth,
+	            maxX - this.left() - space
+	        );
+	    } else {
+	        blockWidth = Math.max(
+	            blockWidth,
+	            maxX - this.left() + this.labelPadding - this.edge
+	        );
+	        // adjust right padding if rightmost input has arrows
+	        if (parts[parts.length - 1] instanceof MultiArgMorph
+	                && (lines.length === 1)) {
+	            blockWidth -= space;
+	        }
+	        // adjust width to hat width
+	        if (this instanceof HatBlockMorph) {
+	            blockWidth = Math.max(blockWidth, this.hatWidth * 1.5);
+	        }
+	    }
+	
+	    // set my extent:
+	    this.setExtent(new Point(blockWidth, blockHeight));
+	
+	    // adjust CSlots
+	    parts.forEach(function (part) {
+	        if (part instanceof CSlotMorph) {
+	            if (myself.isPredicate) {
+	                part.setWidth(blockWidth - myself.rounding * 2);
+	            } else {
+	                part.setWidth(blockWidth - myself.edge);
+	            }
+	        }
+	    });
+	
+	    // redraw in order to erase CSlot backgrounds
+	    this.drawNew();
+	
+	    // position next block:
+	    if (nb) {
+	        nb.setPosition(
+	            new Point(
+	                this.left(),
+	                this.bottom() - (this.corner)
+	            )
+	        );
+	    }
+	
+	    // find out if one of my parents needs to be fixed
+	    if (this instanceof CommandBlockMorph) {
+	        if (this.height() !== initialExtent.y) {
+	            affected = this.parentThatIsA(CommandSlotMorph);
+	            if (affected) {
+	                affected.fixLayout();
+	            }
+	        }
+	        if (this.width() !== initialExtent.x) {
+	            affected = this.parentThatIsAnyOf(
+	                [ReporterBlockMorph, CommandSlotMorph, RingCommandSlotMorph]
+	            );
+	            if (affected) {
+	                affected.fixLayout();
+	            }
+	        }
+	        if (affected) {
+	            return;
+	        }
+	    } else if (this instanceof ReporterBlockMorph) {
+	        if (this.parent) {
+	            if (this.parent.fixLayout) {
+	                return this.parent.fixLayout();
+	            }
+	        }
+	    }
+	
+	    this.fixHighlight();
+}
+
+blocks.js 1443:
+	SPLIT block on LINES
+	
+        part = myself.labelPart(word);
+        part.drawNew();
+
+=================
+
+blocks.js 670:
+	SyntaxElementMorph.prototype.labelPart = function (spec) {
+
+blocks.js 1992:
+	BlockMorph.prototype.setSpec = function (spec) {
+
+"# x #"
+OLD
+- isLinkingChar (#) ==> T/F
+- attachToNext ==> T/F
+	": isLinkingChar F, attachToNext T, attachToPrev T 
+	#: isLinkingChar T, attachToNext F, attachToPrev T 
+	x: isLinkingChar F, attachToNext T, attachToPrev T 
+	#: isLinkingChar T, attachToNext F, attachToPrev T 
+	": isLinkingChar F, attachToNext F, attachToPrev T 
+
+- in prototipo:
+	": isLinkingChar F, attachToNext T, attachToPrev F  ==> "	prototipo+attachToNext  T ==> "
+	#: isLinkingChar T, attachToNext F, attachToPrev T  ==> #_	prototipo+attachToNext  F ==> #_
+	x: isLinkingChar F, attachToNext T, attachToPrev F  ==> x_	prototipo+attachToNext  T ==> x_
+	#: isLinkingChar T, attachToNext F, attachToPrev F  ==> #	prototipo+attachToNext  F ==> #
+	": isLinkingChar F, attachToNext F, attachToPrev F  ==> "_	prototipo+attachToNext  F ==> "_
+
+	": isLinkingChar F, attachToNext T, 			==> "	prototipo+attachToNext  T ==> "
+	#: isLinkingChar T, attachToPrev T  			==> #_	prototipo+attachToNext  F ==> #_
+	x: isLinkingChar F, attachToNext T, attachToPrev F  ==> x_	prototipo+attachToNext  T ==> x_
+	#: isLinkingChar T, attachToNext F, attachToPrev F  ==> #	prototipo+attachToNext  F ==> #
+	": isLinkingChar F, attachToNext F, attachToPrev F  ==> "_	prototipo+attachToNext  F ==> "_
+
+	prototipo (stampa SEMPRE)
+		WRITE
+		attachToNext ==> NO SPACE
+		!attachToNext ==> SPACE
+
+- in blocco:
+	": isLinkingChar F, attachToNext T ==> "	blocco+attachToNext  T ==> "
+	#: isLinkingChar T, attachToNext F ==> 		blocco+isLinkingChar T ==>
+	x: isLinkingChar F, attachToNext T ==> x	blocco+attachToNext  T ==> x
+	#: isLinkingChar T, attachToNext F ==>		blocco+isLinkingChar T ==>
+	": isLinkingChar F, attachToNext F ==> "_	blocco+attachToNext  F ==> "_
+
+	!prototipo (stampa SE !isLinkingChar)
+		(isLinkingChar ==> NO WRITE, NO SPACE)
+		!isLinkingChar ==> WRITE
+		attachToNext ==> NO SPACE
+		!attachToNext ==> SPACE
+
+NEW
+- isLinkingChar (#) ==> T/F (F)
+- attachToNextInProto ==> T/F (F)
+
+- in prototipo:
+	": attachToNextInProto	T ==> "
+	#: attachToNextInProto	F ==> #_ ==> HEAD of THIS PART:	attachToNextInProto T
+	x: attachToNextInProto	F ==> x_	
+	#: attachToNextInProto	T ==> #	 ==> THIS PART:		attachToNextInProto T
+	": attachToNextInProto	F ==> "_	
+
+	prototipo (stampa SEMPRE)
+		1.	WRITE
+		2.	attachToNextInProto ==> NO SPACE
+			!attachToNextInProto ==> SPACE
+
+- in blocco:
+	": attachToNextInBlock	T ==> "	
+	#: isLinkingChar	T ==> 	 ==> HEAD of THIS PART:		attachToNextInBlock T
+	x: attachToNextInBlock	T ==> x	
+	#: isLinkingChar	T ==>	 ==> PREVIOUS of THIS PART:	attachToNextInBlock T	
+	": attachToNextInBlock	F ==> "_	
+
+	!prototipo (stampa SE !isLinkingChar)
+		1.	(isLinkingChar ==> NO WRITE, NO SPACE)
+		2.	!isLinkingChar ==> WRITE
+			2.1 	attachToNextInBlock ==> NO SPACE
+			2.2	!attachToNextInBlock ==> SPACE
+
+DEFAULT:
+- isLinkingChar		==> F
+- attachToNextInProto	==> F
+- attachToNextInBlock	==> F
+
+PARSING:
+_#	==> HEAD of THIS PART:	attachToNextInProto T
+_#	==> isLinkingChar	T,	HEAD of THIS PART:	attachToNextInBlock T
+#_	==> THIS PART:		attachToNextInProto T
+#_	==> isLinkingChar	T, 	PREVIOUS of THIS PART:	attachToNextInBlock T		
+
+BLOCKS.js:
+	670 labelPart
+	prima 2048
+		poi 1428 (SENZA parts[0].text === "PROVA")
+			1449: NON deve aggiungere SPACE se c'è DOPO #
+				quando trovo DOPO # ==> sottraggo SPACE (?)
+
+	1394
+
+2029 COND spec === "ABC # x"
+
+BLOCK
+	POSITION + WIDTH:
+		ABC: 	6,	4.80	+27
+			6+27+4=37	
+STOP at 1428+1491+1503 in fixLayout after stopping in setspec at 2030 WHEN spec === "ABC # x"
+
+RESET:
+	- reload
+	- unlock GUI
+	- 
+	
+BLOCKS.js:
+	1530 
+
+WHEN LOCKED:
+	- ELIMINARE:
+		- visualizzazio
+		
+HID RINGS:
+Blocks.js 4683 ==> NO
+	RingMorph.prototype.init = function () {
+
+	Ring:
+		- ringreporter
+		*- multiarg
+			- string
+			*- frame
+				- arrow
+				*- arrow
+				
